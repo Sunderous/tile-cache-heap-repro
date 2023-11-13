@@ -1,6 +1,10 @@
 use bitflags::bitflags;
+use fastlz_sys::{fastlz_compress, fastlz_decompress};
 use recastnavigation_sys::*;
-use std::{fs, os::raw::c_uchar};
+use std::{
+    fs,
+    os::raw::{c_uchar, c_void},
+};
 
 pub fn main() {}
 
@@ -31,8 +35,59 @@ bitflags! {
     }
 }
 
+// extern "C" fn max_compressed_size(_object_ptr: *mut std::ffi::c_void, buffer_size: i32) -> i32 {
+//     buffer_size
+// }
+
+// extern "C" fn compress(
+//     _object_ptr: *mut std::ffi::c_void,
+//     buffer: *const u8,
+//     buffer_size: i32,
+//     compressed: *mut u8,
+//     max_compressed_size: i32,
+//     compressed_size: *mut i32,
+// ) -> u32 {
+//     assert!(
+//         buffer_size <= max_compressed_size,
+//         "\n\nleft: {}\nright: {}",
+//         buffer_size,
+//         max_compressed_size
+//     );
+
+//     let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size as usize) };
+
+//     unsafe { *compressed_size = buffer_size };
+
+//     let compressed_slice =
+//         unsafe { std::slice::from_raw_parts_mut(compressed, *compressed_size as usize) };
+
+//     compressed_slice.copy_from_slice(buffer_slice);
+
+//     DT_SUCCESS
+// }
+
+// extern "C" fn decompress(
+//     object_ptr: *mut std::ffi::c_void,
+//     compressed: *const u8,
+//     compressed_size: i32,
+//     buffer: *mut u8,
+//     max_buffer_size: i32,
+//     buffer_size: *mut i32,
+// ) -> u32 {
+//     // Since compress just copies the source to destination, decompress is
+//     // the exact same.
+//     compress(
+//         object_ptr,
+//         compressed,
+//         compressed_size,
+//         buffer,
+//         max_buffer_size,
+//         buffer_size,
+//     )
+// }
+
 extern "C" fn max_compressed_size(_object_ptr: *mut std::ffi::c_void, buffer_size: i32) -> i32 {
-    buffer_size
+    return (buffer_size as f32 * 1.05f32) as i32;
 }
 
 extern "C" fn compress(
@@ -40,46 +95,42 @@ extern "C" fn compress(
     buffer: *const u8,
     buffer_size: i32,
     compressed: *mut u8,
-    max_compressed_size: i32,
+    _max_compressed_size: i32,
     compressed_size: *mut i32,
 ) -> u32 {
-    assert!(
-        buffer_size <= max_compressed_size,
-        "\n\nleft: {}\nright: {}",
-        buffer_size,
-        max_compressed_size
-    );
+    unsafe {
+        *compressed_size = fastlz_compress(
+            buffer as *const c_void,
+            buffer_size,
+            compressed as *mut c_void,
+        );
+    }
 
-    let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size as usize) };
-
-    unsafe { *compressed_size = buffer_size };
-
-    let compressed_slice =
-        unsafe { std::slice::from_raw_parts_mut(compressed, *compressed_size as usize) };
-
-    compressed_slice.copy_from_slice(buffer_slice);
-
-    DT_SUCCESS
+    return DT_SUCCESS;
 }
 
 extern "C" fn decompress(
-    object_ptr: *mut std::ffi::c_void,
+    _object_ptr: *mut std::ffi::c_void,
     compressed: *const u8,
     compressed_size: i32,
     buffer: *mut u8,
     max_buffer_size: i32,
     buffer_size: *mut i32,
 ) -> u32 {
-    // Since compress just copies the source to destination, decompress is
-    // the exact same.
-    compress(
-        object_ptr,
-        compressed,
-        compressed_size,
-        buffer,
-        max_buffer_size,
-        buffer_size,
-    )
+    unsafe {
+        *buffer_size = fastlz_decompress(
+            compressed as *const c_void,
+            compressed_size,
+            buffer as *mut c_void,
+            max_buffer_size,
+        );
+
+        if *buffer_size < 0 {
+            return DT_FAILURE;
+        }
+
+        return DT_SUCCESS;
+    }
 }
 
 #[test]
